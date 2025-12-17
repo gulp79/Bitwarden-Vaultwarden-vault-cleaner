@@ -1,21 +1,48 @@
-
-name: Build_v2 (Nuitka + PyInstaller)
+name: Build GUI & CLI
 
 on:
   workflow_dispatch:
     inputs:
+      build_cli:
+        description: "Build CLI"
+        required: true
+        default: true
+        type: boolean
+      build_gui:
+        description: "Build GUI"
+        required: true
+        default: true
+        type: boolean
       build_nuitka:
         description: "Build con Nuitka"
         required: true
-        default: "true"
-        type: choice
-        options: ["true", "false"]
+        default: true
+        type: boolean
       build_pyinstaller:
         description: "Build con PyInstaller"
         required: true
-        default: "true"
-        type: choice
-        options: ["true", "false"]
+        default: true
+        type: boolean
+      build_windows:
+        description: "Build per Windows"
+        required: true
+        default: true
+        type: boolean
+      build_linux:
+        description: "Build per Linux"
+        required: true
+        default: false
+        type: boolean
+      build_macos:
+        description: "Build per macOS"
+        required: true
+        default: false
+        type: boolean
+      use_upx_compression:
+        description: "Comprimi con UPX"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -25,146 +52,135 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
+  prepare-matrix:
+    name: Prepare Build Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set matrix based on inputs
+        id: set-matrix
+        run: |
+          OS_LIST="[]"
+          if [ "${{ inputs.build_windows }}" == "true" ]; then OS_LIST=$(echo $OS_LIST | jq -c '. += ["windows-latest"]'); fi
+          if [ "${{ inputs.build_linux }}" == "true" ]; then OS_LIST=$(echo $OS_LIST | jq -c '. += ["ubuntu-latest"]'); fi
+          if [ "${{ inputs.build_macos }}" == "true" ]; then OS_LIST=$(echo $OS_LIST | jq -c '. += ["macos-latest"]'); fi
+          MATRIX=$(echo "{\"os\":$OS_LIST}" | jq -c .)
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+  build-cli:
+    name: Build CLI on ${{ matrix.os }}
+    needs: prepare-matrix
     runs-on: ${{ matrix.os }}
+    if: inputs.build_cli == true && needs.prepare-matrix.outputs.matrix != '{"os":[]}'
     strategy:
       fail-fast: false
-      matrix:
-        #os: [ubuntu-latest, windows-latest, macos-latest]
-        os: [windows-latest]
-
-    env:
-      PYTHONUNBUFFERED: "1"
-      PIP_DISABLE_PIP_VERSION_CHECK: "1"
-      PIP_NO_PYTHON_VERSION_WARNING: "1"
-
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
-
-      - name: Install system deps (Linux)
-        if: runner.os == 'Linux'
+      - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc g++ patchelf
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install pyinstaller nuitka
         shell: bash
-
-      - name: Upgrade pip tooling
-        run: python -m pip install --upgrade pip setuptools wheel
-        shell: bash
-
-      - name: Install project requirements (if present)
+      - name: Build CLI
         run: |
-          if [ -f requirements.txt ]; then
-            python -m pip install -r requirements.txt
+          mkdir -p dist/pyinstaller dist/nuitka build
+          if [ "${{ inputs.build_pyinstaller }}" == "true" ]; then
+            python -m PyInstaller --clean --noconfirm --onefile --distpath=dist/pyinstaller --workpath=build/pyinstaller-cli --specpath=build -n vw-cleaner-cli --exclude-module=PySide6 vw_cleaner_cli.py
+          fi
+          if [ "${{ inputs.build_nuitka }}" == "true" ]; then
+            OPTS="--onefile --assume-yes-for-downloads --output-dir=dist/nuitka --remove-output --nofollow-import-to=PySide6"
+            if [ "${{ runner.os }}" = "Windows" ]; then OPTS="$OPTS --mingw64 --output-filename=vw-cleaner-cli.exe"; else OPTS="$OPTS --output-filename=vw-cleaner-cli"; fi
+            python -m nuitka $OPTS vw_cleaner_cli.py
           fi
         shell: bash
-
-      - name: Install build tools (Nuitka + PyInstaller)
-        run: |
-          python -m pip install nuitka pyinstaller
-        shell: bash
-
-      - name: Syntax check (compileall)
-        run: python -m compileall -q .
-        shell: bash
-
-      - name: Prepare output folders
-        run: |
-          rm -rf dist build
-          mkdir -p dist/pyinstaller dist/nuitka
-        shell: bash
-
-      # -----------------------
-      # PYINSTALLER BUILDS
-      # -----------------------
-      - name: PyInstaller - CLI (onefile)
-        if: ${{ inputs.build_pyinstaller == 'true' }}
-        run: |
-          python -m PyInstaller --clean --noconfirm \
-            --onefile \
-            --distpath dist/pyinstaller \
-            --workpath build/pyinstaller \
-            -n vw-cleaner-cli \
-            vw_cleaner_cli.py
-        shell: bash
-
-      - name: PyInstaller - GUI (onefile)
-        if: ${{ inputs.build_pyinstaller == 'true' }}
-        run: |
-          python -m PyInstaller --clean --noconfirm \
-            --onefile \
-            --noconsole \
-            --distpath dist/pyinstaller \
-            --workpath build/pyinstaller \
-            -n vw-cleaner-gui \
-            vw_cleaner_gui.py
-        shell: bash
-
-      # -----------------------
-      # NUITKA BUILDS
-      # -----------------------
-      - name: Nuitka - CLI (onefile)
-        if: ${{ inputs.build_nuitka == 'true' }}
-        run: |
-          python -m nuitka \
-            --onefile \
-            --assume-yes-for-downloads \
-            --output-dir=dist/nuitka \
-            --output-filename=vw-cleaner-cli \
-            vw_cleaner_cli.py
-        shell: bash
-
-      - name: Nuitka - GUI (onefile, Qt)
-        if: ${{ inputs.build_nuitka == 'true' }}
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            python -m nuitka \
-              --onefile \
-              --enable-plugin=pyside6 \
-              --windows-disable-console \
-              --assume-yes-for-downloads \
-              --output-dir=dist/nuitka \
-              --output-filename=vw-cleaner-gui \
-              vw_cleaner_gui.py
-          else
-            python -m nuitka \
-              --onefile \
-              --enable-plugin=pyside6 \
-              --assume-yes-for-downloads \
-              --output-dir=dist/nuitka \
-              --output-filename=vw-cleaner-gui \
-              vw_cleaner_gui.py
-          fi
-        shell: bash
-
-      # -----------------------
-      # DEBUG (sempre utile se qualcosa va storto)
-      # -----------------------
-      - name: Debug - list dist contents
-        run: |
-          echo "runner.os=${{ runner.os }}"
-          echo "Workspace: $GITHUB_WORKSPACE"
-          echo "---- dist tree ----"
-          find dist -maxdepth 3 -type f -print || true
-        shell: bash
-
-      # -----------------------
-      # UPLOAD ARTIFACTS (NO ZIP)
-      # -----------------------
-      - name: Upload artifacts (dist)
+      - name: Upload CLI artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vw-cleaner-${{ runner.os }}
-          path: dist/**
-          if-no-files-found: error
-          retention-days: 14
+          name: vw-cleaner-cli-${{ runner.os }}
+          path: dist/**/*
+
+  build-gui:
+    name: Build GUI on ${{ matrix.os }}
+    needs: prepare-matrix
+    runs-on: ${{ matrix.os }}
+    if: inputs.build_gui == true && needs.prepare-matrix.outputs.matrix != '{"os":[]}'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install PySide6 Pillow pyinstaller nuitka
+          # AGGIUNTO shell: bash per far funzionare questo IF su Windows
+          if [ "${{ runner.os }}" = "Linux" ]; then 
+            sudo apt-get update && sudo apt-get install -y patchelf upx-ucl
+          fi
+        shell: bash
+
+      - name: Prepare Icons
+        run: |
+          mkdir -p build-icons
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            python -c "from PIL import Image; img = Image.open('icona.png'); img.save('icona.ico', sizes=[(256,256), (128,128), (64,64), (48,48), (32,32), (16,16)])"
+          fi
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            mkdir -p icona.iconset
+            sips -z 16 16     icona.png --out icona.iconset/icon_16x16.png
+            sips -z 32 32     icona.png --out icona.iconset/icon_16x16@2x.png
+            sips -z 32 32     icona.png --out icona.iconset/icon_32x32.png
+            sips -z 64 64     icona.png --out icona.iconset/icon_32x32@2x.png
+            sips -z 128 128   icona.png --out icona.iconset/icon_128x128.png
+            sips -z 256 256   icona.png --out icona.iconset/icon_128x128@2x.png
+            sips -z 256 256   icona.png --out icona.iconset/icon_256x256.png
+            sips -z 512 512   icona.png --out icona.iconset/icon_256x256@2x.png
+            sips -z 512 512   icona.png --out icona.iconset/icon_512x512.png
+            sips -z 1024 1024 icona.png --out icona.iconset/icon_512x512@2x.png
+            iconutil -c icns icona.iconset -o icona.icns
+          fi
+        shell: bash
+
+      - name: PyInstaller - GUI
+        if: inputs.build_pyinstaller == true
+        run: |
+          ICON_PATH=""
+          if [ "${{ runner.os }}" = "Windows" ]; then ICON_PATH="$(pwd)/icona.ico"; fi
+          if [ "${{ runner.os }}" = "macOS" ]; then ICON_PATH="$(pwd)/icona.icns"; fi
+          if [ "${{ runner.os }}" = "Linux" ]; then ICON_PATH="$(pwd)/icona.png"; fi
+          
+          python -m PyInstaller --clean --noconfirm --onefile --strip --optimize=2 \
+            --distpath=dist/pyinstaller --workpath=build/pyinstaller-gui --specpath=build \
+            --icon="$ICON_PATH" --noconsole -n vw-cleaner-gui vw_cleaner_gui.py
+        shell: bash
+
+      - name: Nuitka - GUI
+        if: inputs.build_nuitka == true
+        run: |
+          OPTS="--onefile --assume-yes-for-downloads --output-dir=dist/nuitka --remove-output --enable-plugin=pyside6 --lto=yes --include-qt-plugins=sensible"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            OPTS="$OPTS --mingw64 --windows-disable-console --output-filename=vw-cleaner-gui.exe --windows-icon-from-ico=icona.ico"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            OPTS="$OPTS --macos-create-app-bundle --output-filename=vw-cleaner-gui --macos-app-icon=icona.icns"
+          else
+            OPTS="$OPTS --output-filename=vw-cleaner-gui --linux-icon=icona.png"
+          fi
+          python -m nuitka $OPTS vw_cleaner_gui.py
+        shell: bash
+
+      - name: Upload GUI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vw-cleaner-gui-${{ runner.os }}
+          path: dist/**/*
