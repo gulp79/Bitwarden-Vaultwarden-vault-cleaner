@@ -1,7 +1,9 @@
 # Bitwarden/Vaultwarden Vault Cleaner
 [![GitHub release](https://img.shields.io/github/v/release/gulp79/Bitwarden-Vaultwarden-vault-cleaner?include_prereleases)](https://github.com/gulp79/Bitwarden-Vaultwarden-vault-cleaner/releases/latest)  ![Total Downloads](https://img.shields.io/github/downloads/gulp79/Bitwarden-Vaultwarden-vault-cleaner/total)  ![Latest Downloads](https://img.shields.io/github/downloads/gulp79/Bitwarden-Vaultwarden-vault-cleaner/latest/total)
 
-A powerful, safe, and fast Python script for **deduplicating** and **cleaning** Bitwarden or Vaultwarden export JSON files.
+A powerful, safe, and fast Python script (there is also the GUI version) for **deduplicating** and **cleaning** Bitwarden or Vaultwarden export JSON files.
+
+<img width="1648" height="1168" alt="image" src="https://github.com/user-attachments/assets/e9f33d36-34f9-4968-8d43-df74dbb2c1c9" />
 
 ---
 
