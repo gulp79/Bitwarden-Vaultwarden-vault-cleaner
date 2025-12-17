@@ -121,9 +121,9 @@ jobs:
       - name: Install UPX (Windows)
         if: runner.os == 'Windows' && inputs.use_upx_compression == true
         run: |
-          curl -L https://github.com/upx/upx/releases/download/v4.2.2/upx-4.2.2-win64.zip -o upx.zip
+          curl -L https://github.com/upx/upx/releases/download/v5.0.2/upx-5.0.2-win64.zip -o upx.zip
           7z x upx.zip
-          move upx-4.2.2-win64\upx.exe C:\Windows\System32\
+          move upx-5.0.2-win64\upx.exe C:\Windows\System32\
           upx --version
         shell: cmd
 
