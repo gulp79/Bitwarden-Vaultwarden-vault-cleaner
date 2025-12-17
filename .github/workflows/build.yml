@@ -86,14 +86,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install pyinstaller nuitka
+        shell: bash
       - name: Build CLI
         run: |
           mkdir -p dist/pyinstaller dist/nuitka build
-          # PyInstaller
           if [ "${{ inputs.build_pyinstaller }}" == "true" ]; then
             python -m PyInstaller --clean --noconfirm --onefile --distpath=dist/pyinstaller --workpath=build/pyinstaller-cli --specpath=build -n vw-cleaner-cli --exclude-module=PySide6 vw_cleaner_cli.py
           fi
-          # Nuitka
           if [ "${{ inputs.build_nuitka }}" == "true" ]; then
             OPTS="--onefile --assume-yes-for-downloads --output-dir=dist/nuitka --remove-output --nofollow-import-to=PySide6"
             if [ "${{ runner.os }}" = "Windows" ]; then OPTS="$OPTS --mingw64 --output-filename=vw-cleaner-cli.exe"; else OPTS="$OPTS --output-filename=vw-cleaner-cli"; fi
@@ -125,16 +124,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install PySide6 Pillow pyinstaller nuitka
-          if [ "${{ runner.os }}" = "Linux" ]; then sudo apt-get update && sudo apt-get install -y patchelf upx-ucl; fi
+          # AGGIUNTO shell: bash per far funzionare questo IF su Windows
+          if [ "${{ runner.os }}" = "Linux" ]; then 
+            sudo apt-get update && sudo apt-get install -y patchelf upx-ucl
+          fi
+        shell: bash
 
       - name: Prepare Icons
         run: |
           mkdir -p build-icons
-          # Windows: usa icona.ico esistente o converti PNG
           if [ "${{ runner.os }}" = "Windows" ]; then
             python -c "from PIL import Image; img = Image.open('icona.png'); img.save('icona.ico', sizes=[(256,256), (128,128), (64,64), (48,48), (32,32), (16,16)])"
           fi
-          # macOS: Genera ICNS da PNG
           if [ "${{ runner.os }}" = "macOS" ]; then
             mkdir -p icona.iconset
             sips -z 16 16     icona.png --out icona.iconset/icon_16x16.png
@@ -154,7 +155,6 @@ jobs:
       - name: PyInstaller - GUI
         if: inputs.build_pyinstaller == true
         run: |
-          # Usiamo PWD per garantire che il percorso sia assoluto e PyInstaller non si perda
           ICON_PATH=""
           if [ "${{ runner.os }}" = "Windows" ]; then ICON_PATH="$(pwd)/icona.ico"; fi
           if [ "${{ runner.os }}" = "macOS" ]; then ICON_PATH="$(pwd)/icona.icns"; fi
@@ -168,9 +168,7 @@ jobs:
       - name: Nuitka - GUI
         if: inputs.build_nuitka == true
         run: |
-          # Correzione: rimosso 'styles' (non esiste in PySide6/Qt6 per Nuitka)
           OPTS="--onefile --assume-yes-for-downloads --output-dir=dist/nuitka --remove-output --enable-plugin=pyside6 --lto=yes --include-qt-plugins=sensible"
-          
           if [ "${{ runner.os }}" = "Windows" ]; then
             OPTS="$OPTS --mingw64 --windows-disable-console --output-filename=vw-cleaner-gui.exe --windows-icon-from-ico=icona.ico"
           elif [ "${{ runner.os }}" = "macOS" ]; then
@@ -178,7 +176,6 @@ jobs:
           else
             OPTS="$OPTS --output-filename=vw-cleaner-gui --linux-icon=icona.png"
           fi
-          
           python -m nuitka $OPTS vw_cleaner_gui.py
         shell: bash
 
