@@ -65,18 +65,19 @@ jobs:
           OS_LIST="[]"
           
           if [ "${{ inputs.build_windows }}" == "true" ]; then
-            OS_LIST=$(echo $OS_LIST | jq '. += ["windows-latest"]')
+            OS_LIST=$(echo $OS_LIST | jq -c '. += ["windows-latest"]')
           fi
           
           if [ "${{ inputs.build_linux }}" == "true" ]; then
-            OS_LIST=$(echo $OS_LIST | jq '. += ["ubuntu-latest"]')
+            OS_LIST=$(echo $OS_LIST | jq -c '. += ["ubuntu-latest"]')
           fi
           
           if [ "${{ inputs.build_macos }}" == "true" ]; then
-            OS_LIST=$(echo $OS_LIST | jq '. += ["macos-latest"]')
+            OS_LIST=$(echo $OS_LIST | jq -c '. += ["macos-latest"]')
           fi
           
-          echo "matrix={\"os\":$OS_LIST}" >> $GITHUB_OUTPUT
+          MATRIX=$(echo "{\"os\":$OS_LIST}" | jq -c .)
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
           echo "Selected OS: $OS_LIST"
 
   # Job CLI separato (più leggero)
