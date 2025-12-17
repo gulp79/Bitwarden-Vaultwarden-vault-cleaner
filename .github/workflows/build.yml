@@ -1,5 +1,5 @@
 
-name: Build (Nuitka + PyInstaller)
+name: Build_v2 (Nuitka + PyInstaller)
 
 on:
   workflow_dispatch:
