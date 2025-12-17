@@ -226,4 +226,5 @@ def main():
     w.show()
     app.exec()
 
-if __name__ == "__mainif __name__ == "__main__":
+if __name__ == "__main__":
+    raise SystemExit(main())
