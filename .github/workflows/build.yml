@@ -1,21 +1,48 @@
-
-name: Build_gui (Nuitka + PyInstaller)
+name: Build GUI & CLI
 
 on:
   workflow_dispatch:
     inputs:
+      build_cli:
+        description: "Build CLI"
+        required: true
+        default: true
+        type: boolean
+      build_gui:
+        description: "Build GUI"
+        required: true
+        default: true
+        type: boolean
       build_nuitka:
         description: "Build con Nuitka"
         required: true
-        default: "true"
-        type: choice
-        options: ["true", "false"]
+        default: true
+        type: boolean
       build_pyinstaller:
         description: "Build con PyInstaller"
         required: true
-        default: "true"
-        type: choice
-        options: ["true", "false"]
+        default: true
+        type: boolean
+      build_windows:
+        description: "Build per Windows"
+        required: true
+        default: true
+        type: boolean
+      build_linux:
+        description: "Build per Linux"
+        required: true
+        default: false
+        type: boolean
+      build_macos:
+        description: "Build per macOS"
+        required: true
+        default: false
+        type: boolean
+      use_upx_compression:
+        description: "Comprimi con UPX"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -25,14 +52,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
+  # Job per preparare la matrice dinamicamente
+  prepare-matrix:
+    name: Prepare Build Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set matrix based on inputs
+        id: set-matrix
+        run: |
+          OS_LIST="[]"
+          
+          if [ "${{ inputs.build_windows }}" == "true" ]; then
+            OS_LIST=$(echo $OS_LIST | jq '. += ["windows-latest"]')
+          fi
+          
+          if [ "${{ inputs.build_linux }}" == "true" ]; then
+            OS_LIST=$(echo $OS_LIST | jq '. += ["ubuntu-latest"]')
+          fi
+          
+          if [ "${{ inputs.build_macos }}" == "true" ]; then
+            OS_LIST=$(echo $OS_LIST | jq '. += ["macos-latest"]')
+          fi
+          
+          echo "matrix={\"os\":$OS_LIST}" >> $GITHUB_OUTPUT
+          echo "Selected OS: $OS_LIST"
+
+  # Job CLI separato (più leggero)
+  build-cli:
+    name: Build CLI on ${{ matrix.os }}
+    needs: prepare-matrix
     runs-on: ${{ matrix.os }}
+    
+    if: |
+      inputs.build_cli == true &&
+      needs.prepare-matrix.outputs.matrix != '{"os":[]}'
+    
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        #os: [windows-latest]
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
 
     env:
       PYTHONUNBUFFERED: "1"
@@ -51,31 +110,54 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install system deps (Linux)
+      - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc g++ patchelf
+          sudo apt-get install -y gcc g++ patchelf upx-ucl
+        shell: bash
+
+      - name: Install UPX (Windows)
+        if: runner.os == 'Windows' && inputs.use_upx_compression == true
+        run: |
+          curl -L https://github.com/upx/upx/releases/download/v4.2.2/upx-4.2.2-win64.zip -o upx.zip
+          7z x upx.zip
+          move upx-4.2.2-win64\upx.exe C:\Windows\System32\
+          upx --version
+        shell: cmd
+
+      - name: Install UPX (macOS)
+        if: runner.os == 'macOS' && inputs.use_upx_compression == true
+        run: |
+          brew install upx
         shell: bash
 
       - name: Upgrade pip tooling
         run: python -m pip install --upgrade pip setuptools wheel
         shell: bash
 
-      - name: Install project requirements (if present)
+      # CLI non necessita di PySide6
+      - name: Install minimal dependencies
         run: |
-          if [ -f requirements.txt ]; then
-            python -m pip install -r requirements.txt
+          echo "Installing only core dependencies for CLI..."
+        shell: bash
+
+      - name: Install build tools
+        run: |
+          TOOLS=""
+          if [ "${{ inputs.build_nuitka }}" == "true" ]; then
+            TOOLS="$TOOLS nuitka"
+          fi
+          if [ "${{ inputs.build_pyinstaller }}" == "true" ]; then
+            TOOLS="$TOOLS pyinstaller"
+          fi
+          if [ -n "$TOOLS" ]; then
+            python -m pip install $TOOLS
           fi
         shell: bash
 
-      - name: Install build tools (Nuitka + PyInstaller)
-        run: |
-          python -m pip install nuitka pyinstaller
-        shell: bash
-
-      - name: Syntax check (compileall)
-        run: python -m compileall -q .
+      - name: Syntax check
+        run: python -m compileall -q vw_cleaner_cli.py vw_cleaner_core.py
         shell: bash
 
       - name: Prepare output folders
@@ -85,87 +167,379 @@ jobs:
         shell: bash
 
       # -----------------------
-      # PYINSTALLER BUILDS
+      # PYINSTALLER CLI
       # -----------------------
-      - name: PyInstaller - CLI (onefile)
-        if: ${{ inputs.build_pyinstaller == 'true' }}
+      - name: PyInstaller - CLI (onefile, ultra-optimized)
+        if: ${{ inputs.build_pyinstaller == true }}
         run: |
-          python -m PyInstaller --clean --noconfirm \
-            --onefile \
-            --distpath dist/pyinstaller \
-            --workpath build/pyinstaller \
-            -n vw-cleaner-cli \
-            vw_cleaner_cli.py
+          OPTS="--clean --noconfirm --onefile"
+          OPTS="$OPTS --strip"
+          OPTS="$OPTS --optimize=2"
+          OPTS="$OPTS --distpath=dist/pyinstaller"
+          OPTS="$OPTS --workpath=build/pyinstaller-cli"
+          OPTS="$OPTS --specpath=build"
+          OPTS="$OPTS -n vw-cleaner-cli"
+          
+          # Escludi TUTTO tranne essenziale per CLI
+          OPTS="$OPTS --exclude-module=PySide6"
+          OPTS="$OPTS --exclude-module=PyQt5"
+          OPTS="$OPTS --exclude-module=PyQt6"
+          OPTS="$OPTS --exclude-module=tkinter"
+          OPTS="$OPTS --exclude-module=matplotlib"
+          OPTS="$OPTS --exclude-module=numpy"
+          OPTS="$OPTS --exclude-module=scipy"
+          OPTS="$OPTS --exclude-module=pandas"
+          OPTS="$OPTS --exclude-module=PIL"
+          OPTS="$OPTS --exclude-module=IPython"
+          OPTS="$OPTS --exclude-module=pytest"
+          OPTS="$OPTS --exclude-module=setuptools"
+          
+          python -m PyInstaller $OPTS vw_cleaner_cli.py
         shell: bash
 
-      - name: PyInstaller - GUI (onefile)
-        if: ${{ inputs.build_pyinstaller == 'true' }}
-        run: |
-          python -m PyInstaller --clean --noconfirm \
-            --onefile \
-            --noconsole \
-            --distpath dist/pyinstaller \
-            --workpath build/pyinstaller \
-            -n vw-cleaner-gui \
-            vw_cleaner_gui.py
-        shell: bash
-
       # -----------------------
-      # NUITKA BUILDS
+      # NUITKA CLI
       # -----------------------
-      - name: Nuitka - CLI (onefile)
-        if: ${{ inputs.build_nuitka == 'true' }}
+      - name: Nuitka - CLI (onefile, ultra-optimized)
+        if: ${{ inputs.build_nuitka == true }}
         run: |
-          python -m nuitka \
-            --onefile \
-            --assume-yes-for-downloads \
-            --output-dir=dist/nuitka \
-            --output-filename=vw-cleaner-cli \
-            vw_cleaner_cli.py
-        shell: bash
-
-      - name: Nuitka - GUI (onefile, Qt)
-        if: ${{ inputs.build_nuitka == 'true' }}
-        run: |
+          OPTS="--onefile"
+          OPTS="$OPTS --assume-yes-for-downloads"
+          OPTS="$OPTS --output-dir=dist/nuitka"
+          OPTS="$OPTS --remove-output"
+          
+          # Ottimizzazioni aggressive
+          OPTS="$OPTS --lto=yes"
+          if [ "${{ runner.os }}" != "macOS" ]; then
+            OPTS="$OPTS --static-libpython=yes"
+          fi
+          
+          # Escludi TUTTO tranne essenziale
+          OPTS="$OPTS --nofollow-import-to=PySide6"
+          OPTS="$OPTS --nofollow-import-to=PyQt5"
+          OPTS="$OPTS --nofollow-import-to=PyQt6"
+          OPTS="$OPTS --nofollow-import-to=tkinter"
+          OPTS="$OPTS --nofollow-import-to=matplotlib"
+          OPTS="$OPTS --nofollow-import-to=numpy"
+          OPTS="$OPTS --nofollow-import-to=scipy"
+          OPTS="$OPTS --nofollow-import-to=pandas"
+          OPTS="$OPTS --nofollow-import-to=PIL"
+          OPTS="$OPTS --nofollow-import-to=setuptools"
+          
+          # Windows specifico
           if [ "${{ runner.os }}" = "Windows" ]; then
-            python -m nuitka \
-              --onefile \
-              --enable-plugin=pyside6 \
-              --windows-disable-console \
-              --assume-yes-for-downloads \
-              --output-dir=dist/nuitka \
-              --output-filename=vw-cleaner-gui \
-              vw_cleaner_gui.py
+            OPTS="$OPTS --mingw64"
+            OPTS="$OPTS --output-filename=vw-cleaner-cli.exe"
           else
-            python -m nuitka \
-              --onefile \
-              --enable-plugin=pyside6 \
-              --assume-yes-for-downloads \
-              --output-dir=dist/nuitka \
-              --output-filename=vw-cleaner-gui \
-              vw_cleaner_gui.py
+            OPTS="$OPTS --output-filename=vw-cleaner-cli"
+          fi
+          
+          python -m nuitka $OPTS vw_cleaner_cli.py
+        shell: bash
+
+      # -----------------------
+      # UPX COMPRESSION
+      # -----------------------
+      - name: Compress binaries with UPX
+        if: ${{ inputs.use_upx_compression == true }}
+        run: |
+          echo "=== Compressing binaries with UPX ==="
+          
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            find dist -type f -name "*.exe" -exec sh -c 'echo "Compressing: {}"; upx --best --lzma "{}" || echo "Failed: {}"' \;
+          else
+            find dist -type f -executable ! -name "*.so" ! -name "*.dylib" -exec sh -c 'echo "Compressing: {}"; upx --best --lzma "{}" || echo "Failed: {}"' \;
+          fi
+          
+          echo "=== UPX Compression Complete ==="
+        shell: bash
+        continue-on-error: true
+
+      - name: Show build info
+        run: |
+          echo "=== CLI BUILD INFORMATION ==="
+          echo "OS: ${{ runner.os }}"
+          echo "Nuitka: ${{ inputs.build_nuitka }}"
+          echo "PyInstaller: ${{ inputs.build_pyinstaller }}"
+          echo "UPX: ${{ inputs.use_upx_compression }}"
+          echo ""
+          echo "=== FILE SIZES ==="
+          find dist -type f -exec ls -lh {} \;
+        shell: bash
+
+      - name: Upload CLI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vw-cleaner-cli-${{ runner.os }}
+          path: dist/**/*
+          if-no-files-found: error
+          retention-days: 30
+
+  # Job GUI separato (con PySide6)
+  build-gui:
+    name: Build GUI on ${{ matrix.os }}
+    needs: prepare-matrix
+    runs-on: ${{ matrix.os }}
+    
+    if: |
+      inputs.build_gui == true &&
+      needs.prepare-matrix.outputs.matrix != '{"os":[]}'
+    
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+
+    env:
+      PYTHONUNBUFFERED: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PIP_NO_PYTHON_VERSION_WARNING: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ patchelf upx-ucl
+        shell: bash
+
+      - name: Install UPX (Windows)
+        if: runner.os == 'Windows' && inputs.use_upx_compression == true
+        run: |
+          curl -L https://github.com/upx/upx/releases/download/v4.2.2/upx-4.2.2-win64.zip -o upx.zip
+          7z x upx.zip
+          move upx-4.2.2-win64\upx.exe C:\Windows\System32\
+          upx --version
+        shell: cmd
+
+      - name: Install UPX (macOS)
+        if: runner.os == 'macOS' && inputs.use_upx_compression == true
+        run: |
+          brew install upx
+        shell: bash
+
+      - name: Upgrade pip tooling
+        run: python -m pip install --upgrade pip setuptools wheel
+        shell: bash
+
+      - name: Install GUI requirements
+        run: |
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+          python -m pip install Pillow
+        shell: bash
+
+      - name: Install build tools
+        run: |
+          TOOLS=""
+          if [ "${{ inputs.build_nuitka }}" == "true" ]; then
+            TOOLS="$TOOLS nuitka"
+          fi
+          if [ "${{ inputs.build_pyinstaller }}" == "true" ]; then
+            TOOLS="$TOOLS pyinstaller"
+          fi
+          if [ -n "$TOOLS" ]; then
+            python -m pip install $TOOLS
           fi
         shell: bash
 
-      # -----------------------
-      # DEBUG (sempre utile se qualcosa va storto)
-      # -----------------------
-      - name: Debug - list dist contents
+      - name: Syntax check
+        run: python -m compileall -q vw_cleaner_gui.py vw_cleaner_core.py
+        shell: bash
+
+      # Converti icona
+      - name: Convert icon (Windows)
+        if: runner.os == 'Windows'
         run: |
-          echo "runner.os=${{ runner.os }}"
-          echo "Workspace: $GITHUB_WORKSPACE"
-          echo "---- dist tree ----"
-          find dist -maxdepth 3 -type f -print || true
+          if [ -f "icona.png" ]; then
+            python -c "from PIL import Image; img = Image.open('icona.png'); img.save('icona.ico', format='ICO', sizes=[(256,256), (128,128), (64,64), (48,48), (32,32), (16,16)])"
+            echo "Icon converted to ICO"
+          fi
+        shell: bash
+
+      - name: Convert icon (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if [ -f "icona.png" ]; then
+            mkdir -p icona.iconset
+            sips -z 16 16     icona.png --out icona.iconset/icon_16x16.png
+            sips -z 32 32     icona.png --out icona.iconset/icon_16x16@2x.png
+            sips -z 32 32     icona.png --out icona.iconset/icon_32x32.png
+            sips -z 64 64     icona.png --out icona.iconset/icon_32x32@2x.png
+            sips -z 128 128   icona.png --out icona.iconset/icon_128x128.png
+            sips -z 256 256   icona.png --out icona.iconset/icon_128x128@2x.png
+            sips -z 256 256   icona.png --out icona.iconset/icon_256x256.png
+            sips -z 512 512   icona.png --out icona.iconset/icon_256x256@2x.png
+            sips -z 512 512   icona.png --out icona.iconset/icon_512x512.png
+            sips -z 1024 1024 icona.png --out icona.iconset/icon_512x512@2x.png
+            iconutil -c icns icona.iconset -o icona.icns
+            rm -rf icona.iconset
+            echo "Icon converted to ICNS"
+          fi
+        shell: bash
+
+      - name: Prepare output folders
+        run: |
+          rm -rf dist build
+          mkdir -p dist/pyinstaller dist/nuitka
         shell: bash
 
       # -----------------------
-      # UPLOAD ARTIFACTS (NO ZIP)
+      # PYINSTALLER GUI
       # -----------------------
-      - name: Upload artifacts (dist)
+      - name: PyInstaller - GUI (onefile, optimized)
+        if: ${{ inputs.build_pyinstaller == true }}
+        run: |
+          OPTS="--clean --noconfirm --onefile"
+          OPTS="$OPTS --strip"
+          OPTS="$OPTS --optimize=2"
+          OPTS="$OPTS --distpath=dist/pyinstaller"
+          OPTS="$OPTS --workpath=build/pyinstaller-gui"
+          OPTS="$OPTS --specpath=build"
+          OPTS="$OPTS -n vw-cleaner-gui"
+          
+          # Windows: no console + icon
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            OPTS="$OPTS --noconsole"
+            if [ -f "icona.ico" ]; then
+              OPTS="$OPTS --icon=icona.ico"
+            fi
+          fi
+          
+          # macOS: no console + icon
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            OPTS="$OPTS --noconsole"
+            if [ -f "icona.icns" ]; then
+              OPTS="$OPTS --icon=icona.icns"
+            fi
+          fi
+          
+          # Linux: icon
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            if [ -f "icona.png" ]; then
+              OPTS="$OPTS --icon=icona.png"
+            fi
+          fi
+          
+          # Escludi moduli non necessari
+          OPTS="$OPTS --exclude-module=tkinter"
+          OPTS="$OPTS --exclude-module=matplotlib"
+          OPTS="$OPTS --exclude-module=numpy"
+          OPTS="$OPTS --exclude-module=scipy"
+          OPTS="$OPTS --exclude-module=pandas"
+          OPTS="$OPTS --exclude-module=IPython"
+          OPTS="$OPTS --exclude-module=pytest"
+          
+          python -m PyInstaller $OPTS vw_cleaner_gui.py
+        shell: bash
+
+      # -----------------------
+      # NUITKA GUI (con Qt plugin stripping)
+      # -----------------------
+      - name: Nuitka - GUI (onefile, Qt optimized)
+        if: ${{ inputs.build_nuitka == true }}
+        run: |
+          OPTS="--onefile"
+          OPTS="$OPTS --assume-yes-for-downloads"
+          OPTS="$OPTS --output-dir=dist/nuitka"
+          OPTS="$OPTS --remove-output"
+          OPTS="$OPTS --enable-plugin=pyside6"
+          
+          # Ottimizzazioni aggressive
+          OPTS="$OPTS --lto=yes"
+          if [ "${{ runner.os }}" != "macOS" ]; then
+            OPTS="$OPTS --static-libpython=yes"
+          fi
+          
+          # Qt plugins - include SOLO quelli necessari
+          OPTS="$OPTS --include-qt-plugins=sensible,styles"
+          OPTS="$OPTS --noinclude-qt-translations"
+          
+          # Escludi moduli non necessari
+          OPTS="$OPTS --nofollow-import-to=tkinter"
+          OPTS="$OPTS --nofollow-import-to=matplotlib"
+          OPTS="$OPTS --nofollow-import-to=numpy"
+          OPTS="$OPTS --nofollow-import-to=scipy"
+          OPTS="$OPTS --nofollow-import-to=pandas"
+          OPTS="$OPTS --nofollow-import-to=IPython"
+          OPTS="$OPTS --nofollow-import-to=pytest"
+          OPTS="$OPTS --nofollow-import-to=setuptools"
+          
+          # Windows specifico
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            OPTS="$OPTS --mingw64"
+            OPTS="$OPTS --windows-disable-console"
+            OPTS="$OPTS --output-filename=vw-cleaner-gui.exe"
+            if [ -f "icona.ico" ]; then
+              OPTS="$OPTS --windows-icon-from-ico=icona.ico"
+            fi
+          else
+            OPTS="$OPTS --output-filename=vw-cleaner-gui"
+          fi
+          
+          # macOS specifico
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            if [ -f "icona.icns" ]; then
+              OPTS="$OPTS --macos-app-icon=icona.icns"
+            fi
+            OPTS="$OPTS --macos-create-app-bundle"
+          fi
+          
+          # Linux specifico
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            if [ -f "icona.png" ]; then
+              OPTS="$OPTS --linux-icon=icona.png"
+            fi
+          fi
+          
+          python -m nuitka $OPTS vw_cleaner_gui.py
+        shell: bash
+
+      # -----------------------
+      # UPX COMPRESSION
+      # -----------------------
+      - name: Compress binaries with UPX
+        if: ${{ inputs.use_upx_compression == true }}
+        run: |
+          echo "=== Compressing binaries with UPX ==="
+          
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            find dist -type f -name "*.exe" -exec sh -c 'echo "Compressing: {}"; upx --best --lzma "{}" || echo "Failed: {}"' \;
+          else
+            find dist -type f -executable ! -name "*.so" ! -name "*.dylib" -exec sh -c 'echo "Compressing: {}"; upx --best --lzma "{}" || echo "Failed: {}"' \;
+          fi
+          
+          echo "=== UPX Compression Complete ==="
+        shell: bash
+        continue-on-error: true
+
+      - name: Show build info
+        run: |
+          echo "=== GUI BUILD INFORMATION ==="
+          echo "OS: ${{ runner.os }}"
+          echo "Nuitka: ${{ inputs.build_nuitka }}"
+          echo "PyInstaller: ${{ inputs.build_pyinstaller }}"
+          echo "UPX: ${{ inputs.use_upx_compression }}"
+          echo ""
+          echo "=== FILE SIZES ==="
+          find dist -type f -exec ls -lh {} \;
+        shell: bash
+
+      - name: Upload GUI artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vw-cleaner-${{ runner.os }}
-          path: dist/**
+          name: vw-cleaner-gui-${{ runner.os }}
+          path: dist/**/*
           if-no-files-found: error
-          retention-days: 14
-
+          retention-days: 30
