@@ -1,6 +1,8 @@
 # Bitwarden/Vaultwarden Vault Cleaner (vw_cleaner.py)
 
-A powerful, safe, and fast Python script for **deduplicating** and **cleaning** Bitwarden or Vaultwarden export JSON files.
+A powerful, safe, and fast Python script (there is also a gui release) for **deduplicating** and **cleaning** Bitwarden or Vaultwarden export JSON files.
+
+<img width="1648" height="1168" alt="image" src="https://github.com/user-attachments/assets/bcd2200e-7d47-4da2-b85e-79ffba30cd90" />
 
 ---
 
