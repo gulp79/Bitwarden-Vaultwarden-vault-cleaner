@@ -20,6 +20,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build on ${{ matrix.os }}
@@ -37,6 +41,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -44,34 +50,37 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      # Dipendenze di sistema utili a Nuitka su Linux
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc g++ patchelf
+        shell: bash
 
-      - name: Upgrade pip
+      - name: Upgrade pip tooling
         run: python -m pip install --upgrade pip setuptools wheel
+        shell: bash
 
-      # Installa dipendenze runtime (GUI/Qt ecc.)
-      - name: Install project requirements
+      - name: Install project requirements (if present)
         run: |
           if [ -f requirements.txt ]; then
             python -m pip install -r requirements.txt
           fi
         shell: bash
 
-      # Installa i tool di build
       - name: Install build tools (Nuitka + PyInstaller)
         run: |
           python -m pip install nuitka pyinstaller
         shell: bash
 
-      # Cartelle output uniformi
-      - name: Prepare dist folders
+      - name: Syntax check (compileall)
+        run: python -m compileall -q .
+        shell: bash
+
+      - name: Prepare output folders
         run: |
-          mkdir -p dist/pyinstaller dist/nuitka artifacts
+          rm -rf dist build
+          mkdir -p dist/pyinstaller dist/nuitka
         shell: bash
 
       # -----------------------
@@ -82,6 +91,8 @@ jobs:
         run: |
           python -m PyInstaller --clean --noconfirm \
             --onefile \
+            --distpath dist/pyinstaller \
+            --workpath build/pyinstaller \
             -n vw-cleaner-cli \
             vw_cleaner_cli.py
         shell: bash
@@ -89,24 +100,13 @@ jobs:
       - name: PyInstaller - GUI (onefile)
         if: ${{ inputs.build_pyinstaller == 'true' }}
         run: |
-          # GUI: su Windows/macOS spesso meglio senza console (Windows) ma PyInstaller la gestisce con --noconsole.
           python -m PyInstaller --clean --noconfirm \
             --onefile \
             --noconsole \
+            --distpath dist/pyinstaller \
+            --workpath build/pyinstaller \
             -n vw-cleaner-gui \
             vw_cleaner_gui.py
-        shell: bash
-
-      - name: Collect PyInstaller outputs
-        if: ${{ inputs.build_pyinstaller == 'true' }}
-        run: |
-          # PyInstaller mette i binari in dist/ (cartella default di PyInstaller)
-          # Spostiamo dentro dist/pyinstaller per ordine
-          if [ -d "dist" ]; then
-            # Evita di spostare la cartella dist/pyinstaller stessa (che abbiamo creato)
-            # Sposta solo i file eseguibili generati
-            find dist -maxdepth 1 -type f -exec mv {} dist/pyinstaller/ \; || true
-          fi
         shell: bash
 
       # -----------------------
@@ -117,72 +117,54 @@ jobs:
         run: |
           python -m nuitka \
             --onefile \
-            --output-dir=dist/nuitka \
             --assume-yes-for-downloads \
+            --output-dir=dist/nuitka \
+            --output-filename=vw-cleaner-cli \
             vw_cleaner_cli.py
         shell: bash
 
-      - name: Nuitka - GUI (onefile, Qt plugin)
+      - name: Nuitka - GUI (onefile, Qt)
         if: ${{ inputs.build_nuitka == 'true' }}
         run: |
-          # Per PySide6 consigliato abilitare plugin Qt
-          # Su Windows aggiungiamo anche disable-console
           if [ "${{ runner.os }}" = "Windows" ]; then
             python -m nuitka \
               --onefile \
               --enable-plugin=pyside6 \
               --windows-disable-console \
-              --output-dir=dist/nuitka \
               --assume-yes-for-downloads \
+              --output-dir=dist/nuitka \
+              --output-filename=vw-cleaner-gui \
               vw_cleaner_gui.py
           else
             python -m nuitka \
               --onefile \
               --enable-plugin=pyside6 \
-              --output-dir=dist/nuitka \
               --assume-yes-for-downloads \
+              --output-dir=dist/nuitka \
+              --output-filename=vw-cleaner-gui \
               vw_cleaner_gui.py
           fi
         shell: bash
 
       # -----------------------
-      # PACKAGE ARTIFACTS
+      # DEBUG (sempre utile se qualcosa va storto)
       # -----------------------
-      - name: Create artifact bundle
+      - name: Debug - list dist contents
         run: |
-          OS="${{ runner.os }}"
-          mkdir -p artifacts
-
-          # Copia contenuti (se esistono)
-          if [ -d dist/pyinstaller ]; then
-            mkdir -p "artifacts/${OS}/pyinstaller"
-            cp -R dist/pyinstaller/* "artifacts/${OS}/pyinstaller/" 2>/dev/null || true
-          fi
-
-          if [ -d dist/nuitka ]; then
-            mkdir -p "artifacts/${OS}/nuitka"
-            cp -R dist/nuitka/* "artifacts/${OS}/nuitka/" 2>/dev/null || true
-          fi
-
-          # Zip (su Windows runner può non avere zip in bash; usiamo python per fare zip cross-platform)
-          python - << 'PY'
-          import os, zipfile, pathlib
-          osname = os.environ.get("RUNNER_OS", "Unknown")
-          base = pathlib.Path("artifacts")/osname
-          out = pathlib.Path(f"vw-cleaner_{osname}.zip")
-          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-            if base.exists():
-              for p in base.rglob("*"):
-                if p.is_file():
-                  z.write(p, p.relative_to("artifacts"))
-          print("Created", out)
-          PY
+          echo "runner.os=${{ runner.os }}"
+          echo "Workspace: $GITHUB_WORKSPACE"
+          echo "---- dist tree ----"
+          find dist -maxdepth 3 -type f -print || true
         shell: bash
 
-      - name: Upload artifacts (zip)
+      # -----------------------
+      # UPLOAD ARTIFACTS (NO ZIP)
+      # -----------------------
+      - name: Upload artifacts (dist)
         uses: actions/upload-artifact@v4
         with:
           name: vw-cleaner-${{ runner.os }}
-          path: |
-            vw-cleaner            vw-cleaner_${{ runner.os }}.zip
+          path: dist/**
           if-no-files-found: error
+          retention-days: 14
+
