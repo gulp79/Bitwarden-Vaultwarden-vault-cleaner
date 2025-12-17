@@ -211,7 +211,8 @@ jobs:
           
           # Ottimizzazioni aggressive
           OPTS="$OPTS --lto=yes"
-          if [ "${{ runner.os }}" != "macOS" ]; then
+          # static-libpython solo su Linux (non supportato su Windows/macOS ufficiali)
+          if [ "${{ runner.os }}" = "Linux" ]; then
             OPTS="$OPTS --static-libpython=yes"
           fi
           
@@ -459,7 +460,8 @@ jobs:
           
           # Ottimizzazioni aggressive
           OPTS="$OPTS --lto=yes"
-          if [ "${{ runner.os }}" != "macOS" ]; then
+          # static-libpython solo su Linux (non supportato su Windows/macOS ufficiali)
+          if [ "${{ runner.os }}" = "Linux" ]; then
             OPTS="$OPTS --static-libpython=yes"
           fi
           
