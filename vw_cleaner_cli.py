@@ -27,4 +27,6 @@ def main():
     stats = clean_vault(input_file=input_file, output_file=out_file, deleted_file=del_file, log_cb=print)
     return 0
 
-ifif __name__ == "__main__":
+
+if __name__ == "__main__":
+    raise SystemExit(main())
