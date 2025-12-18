@@ -21,7 +21,7 @@ on:
       build_pyinstaller:
         description: "Build con PyInstaller"
         required: true
-        default: true
+        default: false
         type: boolean
       build_windows:
         description: "Build per Windows"
@@ -31,7 +31,7 @@ on:
       build_linux:
         description: "Build per Linux"
         required: true
-        default: false
+        default: true
         type: boolean
       build_macos:
         description: "Build per macOS"
@@ -41,7 +41,7 @@ on:
       use_upx_compression:
         description: "Comprimi con UPX"
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
