@@ -91,12 +91,12 @@ jobs:
         run: |
           mkdir -p dist/pyinstaller dist/nuitka build
           if [ "${{ inputs.build_pyinstaller }}" == "true" ]; then
-            python -m PyInstaller --clean --noconfirm --onefile --distpath=dist/pyinstaller --workpath=build/pyinstaller-cli --specpath=build -n vw-cleaner-cli --exclude-module=PySide6 vw_cleaner_cli.py
+            python -m PyInstaller --clean --noconfirm --onefile --distpath=dist/pyinstaller --workpath=build/pyinstaller-cli --specpath=build -n vw_cleaner_gui_v2_advanced --exclude-module=PySide6 vw_cleaner_gui_v2_advanced.py
           fi
           if [ "${{ inputs.build_nuitka }}" == "true" ]; then
             OPTS="--onefile --assume-yes-for-downloads --output-dir=dist/nuitka --remove-output --nofollow-import-to=PySide6"
-            if [ "${{ runner.os }}" = "Windows" ]; then OPTS="$OPTS --mingw64 --output-filename=vw-cleaner-cli.exe"; else OPTS="$OPTS --output-filename=vw-cleaner-cli"; fi
-            python -m nuitka $OPTS vw_cleaner_cli.py
+            if [ "${{ runner.os }}" = "Windows" ]; then OPTS="$OPTS --mingw64 --output-filename=vw_cleaner_gui_v2_advanced.exe"; else OPTS="$OPTS --output-filename=vw_cleaner_gui_v2_advanceded"; fi
+            python -m nuitka $OPTS vw_cleaner_gui_v2_advanced.py
           fi
         shell: bash
       - name: Upload CLI artifacts
@@ -162,7 +162,7 @@ jobs:
           
           python -m PyInstaller --clean --noconfirm --onefile --strip --optimize=2 \
             --distpath=dist/pyinstaller --workpath=build/pyinstaller-gui --specpath=build \
-            --icon="$ICON_PATH" --noconsole -n vw-cleaner-gui vw_cleaner_gui.py
+            --icon="$ICON_PATH" --noconsole -n vw_cleaner_gui_v2_advanced v.py
         shell: bash
 
       - name: Nuitka - GUI
@@ -170,13 +170,13 @@ jobs:
         run: |
           OPTS="--onefile --assume-yes-for-downloads --output-dir=dist/nuitka --remove-output --enable-plugin=pyside6 --lto=yes --include-qt-plugins=sensible"
           if [ "${{ runner.os }}" = "Windows" ]; then
-            OPTS="$OPTS --mingw64 --windows-disable-console --output-filename=vw-cleaner-gui.exe --windows-icon-from-ico=icona.ico"
+            OPTS="$OPTS --mingw64 --windows-disable-console --output-filename=vw_cleaner_gui_v2_advanced.exe --windows-icon-from-ico=icona.ico"
           elif [ "${{ runner.os }}" = "macOS" ]; then
-            OPTS="$OPTS --macos-create-app-bundle --output-filename=vw-cleaner-gui --macos-app-icon=icona.icns"
+            OPTS="$OPTS --macos-create-app-bundle --output-filename=vw_cleaner_gui_v2_advanced --macos-app-icon=icona.icns"
           else
-            OPTS="$OPTS --output-filename=vw-cleaner-gui --linux-icon=icona.png"
+            OPTS="$OPTS --output-filename=vw_cleaner_gui_v2_advanced --linux-icon=icona.png"
           fi
-          python -m nuitka $OPTS vw_cleaner_gui.py
+          python -m nuitka $OPTS vw_cleaner_gui_v2_advanced.py
         shell: bash
 
       - name: Upload GUI artifacts
