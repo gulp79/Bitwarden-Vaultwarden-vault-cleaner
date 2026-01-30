@@ -91,18 +91,18 @@ jobs:
         run: |
           mkdir -p dist/pyinstaller dist/nuitka build
           if [ "${{ inputs.build_pyinstaller }}" == "true" ]; then
-            python -m PyInstaller --clean --noconfirm --onefile --distpath=dist/pyinstaller --workpath=build/pyinstaller-cli --specpath=build -n vw_cleaner_gui_v2_advanced --exclude-module=PySide6 vw_cleaner_gui_v2_advanced.py
+            python -m PyInstaller --clean --noconfirm --onefile --distpath=dist/pyinstaller --workpath=build/pyinstaller-cli --specpath=build -n vw_cleaner_cli_v2 --exclude-module=PySide6 vw_cleaner_cli_v2.py
           fi
           if [ "${{ inputs.build_nuitka }}" == "true" ]; then
             OPTS="--onefile --assume-yes-for-downloads --output-dir=dist/nuitka --remove-output --nofollow-import-to=PySide6"
-            if [ "${{ runner.os }}" = "Windows" ]; then OPTS="$OPTS --mingw64 --output-filename=vw_cleaner_gui_v2_advanced.exe"; else OPTS="$OPTS --output-filename=vw_cleaner_gui_v2_advanceded"; fi
-            python -m nuitka $OPTS vw_cleaner_gui_v2_advanced.py
+            if [ "${{ runner.os }}" = "Windows" ]; then OPTS="$OPTS --mingw64 --output-filename=vw_cleaner_cli_v2.exe"; else OPTS="$OPTS --output-filename=vw_cleaner_cli_v2"; fi
+            python -m nuitka $OPTS vw_cleaner_cli_v2.py
           fi
         shell: bash
       - name: Upload CLI artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: vw-cleaner-cli-${{ runner.os }}
+          name: vw_cleaner_cli_v2-${{ runner.os }}
           path: dist/**/*
 
   build-gui:
@@ -162,7 +162,7 @@ jobs:
           
           python -m PyInstaller --clean --noconfirm --onefile --strip --optimize=2 \
             --distpath=dist/pyinstaller --workpath=build/pyinstaller-gui --specpath=build \
-            --icon="$ICON_PATH" --noconsole -n vw_cleaner_gui_v2_advanced v.py
+            --icon="$ICON_PATH" --noconsole -n vw_cleaner_gui_v2_advanced vw_cleaner_gui_v2_advanced.py
         shell: bash
 
       - name: Nuitka - GUI
@@ -182,5 +182,5 @@ jobs:
       - name: Upload GUI artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: vw-cleaner-gui-${{ runner.os }}
+          name: vw_cleaner_gui_v2_advanced-${{ runner.os }}
           path: dist/**/*
