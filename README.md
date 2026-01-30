@@ -355,7 +355,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🙏 Acknowledgments
 
 - **Original Project**: [gulp79](https://github.com/gulp79)
-- **Advanced Edition**: Principal Engineer Review (2026)
 - **Community**: Bitwarden/Vaultwarden users who provided feedback
 
 ---
@@ -364,7 +363,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - 🐛 **Issues**: [GitHub Issues](https://github.com/gulp79/Bitwarden-Vaultwarden-vault-cleaner/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/gulp79/Bitwarden-Vaultwarden-vault-cleaner/discussions)
-- 📧 **Email**: [Your contact email]
 
 ---
 
