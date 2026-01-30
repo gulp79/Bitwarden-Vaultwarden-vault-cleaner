@@ -1,4 +1,5 @@
 # Bitwarden/Vaultwarden Vault Cleaner and deduplication tool
+[![GitHub release](https://img.shields.io/github/v/release/gulp79/Bitwarden-Vaultwarden-vault-cleaner?include_prereleases)](https://github.com/gulp79/Bitwarden-Vaultwarden-vault-cleaner/releases/latest)  ![Total Downloads](https://img.shields.io/github/downloads/gulp79/Bitwarden-Vaultwarden-vault-cleaner/total)  ![Latest Downloads](https://img.shields.io/github/downloads/gulp79/Bitwarden-Vaultwarden-vault-cleaner/latest/total)
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
