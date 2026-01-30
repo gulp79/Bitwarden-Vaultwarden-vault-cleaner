@@ -1,4 +1,4 @@
-# Bitwarden/Vaultwarden Vault Cleaner
+# Bitwarden/Vaultwarden Vault Cleaner and deduplication tool
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -8,6 +8,14 @@
 
 Remove duplicate entries from your password vault while preserving all critical information (URIs, notes, TOTP seeds) with guaranteed safety and explainability.
 
+## 📸 Screenshots
+
+### GUI Interface
+
+<img width="713" height="522" alt="Screenshot 2026-01-30 083632" src="https://github.com/user-attachments/assets/29a4b32a-e6e1-4be1-b855-901ae5a6a17e" />
+
+*Advanced GUI with tooltips, real-time progress, and extended metrics*
+*Also in CLI version with real-time progress, and extended metrics*
 ---
 
 ## 🎯 Features
@@ -30,11 +38,6 @@ Remove duplicate entries from your password vault while preserving all critical 
 
 ---
 
-## 📸 Screenshots
-
-### GUI Interface
-![Vault Cleaner GUI](screenshot_gui.png)
-*Advanced GUI with tooltips, real-time progress, and extended metrics*
 
 ### Command Line
 ```bash
