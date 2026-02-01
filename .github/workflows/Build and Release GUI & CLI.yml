@@ -1,0 +1,211 @@
+name: Build and Release GUI & CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_cli:
+        description: "Build CLI"
+        required: true
+        default: true
+        type: boolean
+      build_gui:
+        description: "Build GUI"
+        required: true
+        default: true
+        type: boolean
+      build_nuitka:
+        description: "Build con Nuitka"
+        required: true
+        default: true
+        type: boolean
+      build_pyinstaller:
+        description: "Build con PyInstaller"
+        required: true
+        default: false
+        type: boolean
+      build_windows:
+        description: "Build per Windows"
+        required: true
+        default: true
+        type: boolean
+      build_linux:
+        description: "Build per Linux"
+        required: true
+        default: true
+        type: boolean
+      build_macos:
+        description: "Build per macOS"
+        required: true
+        default: false
+        type: boolean
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare-matrix:
+    name: Prepare Build Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      is_release: ${{ steps.set-matrix.outputs.is_release }}
+      version: ${{ steps.set-matrix.outputs.version }}
+    steps:
+      - id: set-matrix
+        run: |
+          # Se è un tag, buildiamo tutto di default
+          IF_TAG=${{ startsWith(github.ref, 'refs/tags/') }}
+          VERSION=${GITHUB_REF_NAME}
+          if [ "$IF_TAG" != "true" ]; then VERSION="run-${GITHUB_RUN_NUMBER}"; fi
+          
+          OS_LIST="[]"
+          if [[ "$IF_TAG" == "true" || "${{ inputs.build_windows }}" == "true" ]]; then OS_LIST=$(echo $OS_LIST | jq -c '. += ["windows-latest"]'); fi
+          if [[ "$IF_TAG" == "true" || "${{ inputs.build_linux }}" == "true" ]]; then OS_LIST=$(echo $OS_LIST | jq -c '. += ["ubuntu-latest"]'); fi
+          if [[ "$IF_TAG" == "true" || "${{ inputs.build_macos }}" == "true" ]]; then OS_LIST=$(echo $OS_LIST | jq -c '. += ["macos-latest"]'); fi
+          
+          MATRIX=$(echo "{\"os\":$OS_LIST}" | jq -c .)
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "is_release=$IF_TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+  build-cli:
+    name: Build CLI on ${{ matrix.os }}
+    needs: prepare-matrix
+    runs-on: ${{ matrix.os }}
+    if: (inputs.build_cli == true || needs.prepare-matrix.outputs.is_release == 'true') && needs.prepare-matrix.outputs.matrix != '{"os":[]}'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          python -m pip install pyinstaller nuitka
+        shell: bash
+      - name: Build CLI
+        env:
+          VER: ${{ needs.prepare-matrix.outputs.version }}
+        run: |
+          mkdir -p dist/final
+          # PyInstaller
+          if [[ "${{ inputs.build_pyinstaller }}" == "true" || "${{ needs.prepare-matrix.outputs.is_release }}" == "true" ]]; then
+            python -m PyInstaller --clean --onefile --distpath=dist/final --workpath=build/py-cli -n "vw_cleaner_cli_pyinstaller_${{ runner.os }}_$VER" --exclude-module=PySide6 vw_cleaner_cli_v2.py
+          fi
+          # Nuitka
+          if [[ "${{ inputs.build_nuitka }}" == "true" || "${{ needs.prepare-matrix.outputs.is_release }}" == "true" ]]; then
+            EXT=""; if [ "${{ runner.os }}" = "Windows" ]; then EXT=".exe"; fi
+            python -m nuitka --onefile --assume-yes-for-downloads --output-dir=dist/final --remove-output --nofollow-import-to=PySide6 --output-filename="vw_cleaner_cli_nuitka_${{ runner.os }}_$VER$EXT" vw_cleaner_cli_v2.py
+          fi
+        shell: bash
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: cli-artifacts-${{ runner.os }}
+          path: dist/final/*
+
+  build-gui:
+    name: Build GUI on ${{ matrix.os }}
+    needs: prepare-matrix
+    runs-on: ${{ matrix.os }}
+    if: (inputs.build_gui == true || needs.prepare-matrix.outputs.is_release == 'true') && needs.prepare-matrix.outputs.matrix != '{"os":[]}'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          python -m pip install PySide6 Pillow pyinstaller nuitka
+          if [ "${{ runner.os }}" = "Linux" ]; then sudo apt-get update && sudo apt-get install -y patchelf upx-ucl; fi
+        shell: bash
+
+      - name: Prepare Icons
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            python -c "from PIL import Image; img = Image.open('icona.png'); img.save('icona.ico', sizes=[(256,256), (48,48), (32,32)])"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            mkdir -p icona.iconset
+            sips -z 1024 1024 icona.png --out icona.iconset/icon_512x512@2x.png
+            iconutil -c icns icona.iconset -o icona.icns
+          fi
+        shell: bash
+
+      - name: Build GUI
+        env:
+          VER: ${{ needs.prepare-matrix.outputs.version }}
+        run: |
+          mkdir -p dist/final
+          ICON_PATH="icona.png"
+          if [ "${{ runner.os }}" = "Windows" ]; then ICON_PATH="icona.ico"; fi
+          if [ "${{ runner.os }}" = "macOS" ]; then ICON_PATH="icona.icns"; fi
+
+          # PyInstaller
+          if [[ "${{ inputs.build_pyinstaller }}" == "true" || "${{ needs.prepare-matrix.outputs.is_release }}" == "true" ]]; then
+            python -m PyInstaller --clean --onefile --noconsole --icon="$ICON_PATH" --distpath=dist/final -n "vw_cleaner_gui_pyinstaller_${{ runner.os }}_$VER" vw_cleaner_gui_v2_advanced.py
+          fi
+          
+          # Nuitka
+          if [[ "${{ inputs.build_nuitka }}" == "true" || "${{ needs.prepare-matrix.outputs.is_release }}" == "true" ]]; then
+            OPTS="--onefile --assume-yes-for-downloads --output-dir=dist/final --remove-output --enable-plugin=pyside6 --lto=yes --include-qt-plugins=sensible"
+            EXT=""; if [ "${{ runner.os }}" = "Windows" ]; then EXT=".exe"; fi
+            
+            if [ "${{ runner.os }}" = "Windows" ]; then
+              OPTS="$OPTS --mingw64 --windows-console-mode=disable --windows-icon-from-ico=icona.ico"
+            elif [ "${{ runner.os }}" = "macOS" ]; then
+              OPTS="$OPTS --macos-create-app-bundle --macos-app-icon=icona.icns"
+            else
+              OPTS="$OPTS --linux-icon=icona.png"
+            fi
+            python -m nuitka $OPTS --output-filename="vw_cleaner_gui_nuitka_${{ runner.os }}_$VER$EXT" vw_cleaner_gui_v2_advanced.py
+          fi
+        shell: bash
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: gui-artifacts-${{ runner.os }}
+          path: dist/final/*
+
+  create-release:
+    name: Create GitHub Release
+    needs: [prepare-matrix, build-cli, build-gui]
+    if: needs.prepare-matrix.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: release-artifacts
+          pattern: '*-artifacts-*'
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
