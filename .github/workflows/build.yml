@@ -100,7 +100,7 @@ jobs:
           fi
         shell: bash
       - name: Upload CLI artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: vw_cleaner_cli_v2-${{ runner.os }}
           path: dist/**/*
@@ -180,7 +180,7 @@ jobs:
         shell: bash
 
       - name: Upload GUI artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: vw_cleaner_gui_v2_advanced-${{ runner.os }}
           path: dist/**/*
