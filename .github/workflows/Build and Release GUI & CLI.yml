@@ -111,7 +111,7 @@ jobs:
           fi
         shell: bash
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cli-artifacts-${{ runner.os }}
           path: dist/final/*
@@ -180,7 +180,7 @@ jobs:
         shell: bash
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: gui-artifacts-${{ runner.os }}
           path: dist/final/*
