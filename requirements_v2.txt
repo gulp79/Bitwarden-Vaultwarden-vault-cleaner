@@ -8,7 +8,7 @@ PySide6>=6.6.0  # GUI interface
 
 # === TESTING (Optional - Development) ===
 pytest>=7.4.0  # Test runner
-pytest-cov>=4.1.0  # Coverage reporting
+pytest-cov>=7.1.0  # Coverage reporting
 hypothesis>=6.92.0  # Property-based testing
 
 # === BENCHMARKING (Optional - Development) ===
