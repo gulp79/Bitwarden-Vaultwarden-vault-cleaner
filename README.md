@@ -8,6 +8,8 @@
 
 **Safe, deterministic, and idempotent deduplication tool for Bitwarden/Vaultwarden password vaults.**
 
+☕ **Enjoying my work?** &nbsp; <a href="https://ko-fi.com/gulp79"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" height="32" style="vertical-align: middle;" /></a>
+
 Remove duplicate entries from your password vault while preserving all critical information (URIs, notes, TOTP seeds) with guaranteed safety and explainability.
 
 ## 📸 Screenshots
