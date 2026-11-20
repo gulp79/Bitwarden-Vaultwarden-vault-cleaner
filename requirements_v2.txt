@@ -9,7 +9,7 @@ PySide6>=6.6.0  # GUI interface
 # === TESTING (Optional - Development) ===
 pytest>=7.4.0  # Test runner
 pytest-cov>=4.1.0  # Coverage reporting
-hypothesis>=6.92.0  # Property-based testing
+hypothesis>=6.152.2  # Property-based testing
 
 # === BENCHMARKING (Optional - Development) ===
 matplotlib>=3.8.0  # Performance graphs
